@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background: #05070b;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #05070b;
+  color: #ffffff;
+}
+
+img {
+  display: block;
+}
+
+.font-condensed {
+  font-family: 'Oswald', sans-serif;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #05070b; }
+::-webkit-scrollbar-thumb { background: #2d6cdf; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #4b7cf0; }
+
+.glow-blue {
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.18), 0 0 48px rgba(37, 99, 235, 0.08);
+}
