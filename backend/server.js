@@ -271,6 +271,9 @@ async function ensureDatabaseSeeded() {
         console.warn('Auto-seed warning:', err.message);
     }
 }
+app.get("/health", (req, res) => {
+    res.json("speedo is running")
+})
 
 const PORT = 5000;
 app.listen(PORT, async () => {
