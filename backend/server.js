@@ -1,7 +1,11 @@
 const express = require('express');
-const cors = require('cors');
-const pool = require('./db');
+const path = require('path');
 
+require('dotenv').config({
+    path: path.join(__dirname, '.env'),
+    override: true
+}); const cors = require('cors');
+const pool = require('./db');
 const app = express();
 app.use(cors());
 app.use(express.json());
