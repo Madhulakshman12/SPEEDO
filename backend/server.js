@@ -44,40 +44,13 @@ app.post('/api/login', async (req, res) => {
             }
             res.json({ success: true, user });
         } else {
-            // Also accept default admin credentials if not yet in database
-            if (email === 'admin@speedo.com' && password === 'admin123') {
-                const adminUser = {
-                    id: 999,
-                    name: 'Speedo Fleet Admin',
-                    email: 'admin@speedo.com',
-                    role: 'admin',
-                    loyaltyTier: 'Executive Administrator',
-                    discountRate: 0.25
-                };
-                return res.json({ success: true, user: adminUser });
-            }
             res.status(401).json({ success: false, message: 'Invalid email or password' });
         }
     } catch (err) {
-        // Fallback for default admin
-        if (email === 'admin@speedo.com' && password === 'admin123') {
-            return res.json({
-                success: true,
-                user: {
-                    id: 999,
-                    name: 'Speedo Fleet Admin',
-                    email: 'admin@speedo.com',
-                    role: 'admin',
-                    loyaltyTier: 'Executive Administrator',
-                    discountRate: 0.25
-                }
-            });
-        }
         res.status(500).json({ success: false, message: 'Server error: ' + err.message });
     }
 });
 
-// For prototyping, we often just want a GET /api/user mapping to a specific user (our dummy user)
 app.get('/api/user', async (req, res) => {
     try {
         const [users] = await pool.query('SELECT id, name, email, role, loyaltyTier, discountRate FROM users LIMIT 1');
@@ -118,8 +91,8 @@ app.post('/api/vehicles', async (req, res) => {
             [
                 id, v.name, v.category || 'Luxury SUV', Number(v.dailyRate) || 45000,
                 v.horsepower || '450 HP', v.zeroToSixty || '3.8s', v.topSpeed || '260 km/h',
-                v.transmission || 'Automatic', v.location || 'Banjara Hills, Hyderabad, India',
-                v.image || 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=800&q=80',
+                v.transmission || 'Automatic', v.location || null,
+                v.image || null,
                 true, 'Optimal'
             ]
         );
@@ -207,70 +180,6 @@ app.post('/api/bookings', async (req, res) => {
     }
 });
 
-// Auto-migrate / seed database with Indian locations & INR rates
-async function ensureDatabaseSeeded() {
-    try {
-        // Ensure admin user
-        const [admins] = await pool.query('SELECT id FROM users WHERE email = ?', ['admin@speedo.com']);
-        if (admins.length === 0) {
-            await pool.query(
-                'INSERT INTO users (name, email, password, role, loyaltyTier, discountRate) VALUES (?, ?, ?, ?, ?, ?)',
-                ['Speedo Fleet Admin', 'admin@speedo.com', 'admin123', 'admin', 'Executive Administrator', 0.25]
-            );
-            console.log('Seeded admin user: admin@speedo.com / admin123');
-        }
-
-        // Migrate vehicle locations and rates
-        await pool.query(`
-            UPDATE vehicles 
-            SET location = 'Banjara Hills, Hyderabad, India' 
-            WHERE location LIKE '%Los Angeles%' OR location LIKE '%LAX%' OR location IS NULL OR location = ''
-        `);
-        await pool.query(`
-            UPDATE vehicles 
-            SET location = 'Jubilee Hills, Hyderabad, India' 
-            WHERE location LIKE '%Miami%'
-        `);
-        await pool.query(`
-            UPDATE vehicles 
-            SET location = 'Whitefield, Bangalore, India' 
-            WHERE location LIKE '%San Francisco%'
-        `);
-
-        // Convert any low USD rates to realistic INR rates (e.g. < 5000 -> in thousands)
-        await pool.query(`
-            UPDATE vehicles 
-            SET dailyRate = dailyRate * 85 
-            WHERE dailyRate < 5000
-        `);
-
-        // Update bookings locations & rates
-        await pool.query(`
-            UPDATE bookings 
-            SET location = 'Banjara Hills, Hyderabad, India' 
-            WHERE location LIKE '%Los Angeles%' OR location LIKE '%LAX%'
-        `);
-        await pool.query(`
-            UPDATE bookings 
-            SET location = 'Jubilee Hills, Hyderabad, India' 
-            WHERE location LIKE '%Miami%'
-        `);
-        await pool.query(`
-            UPDATE bookings 
-            SET location = 'Whitefield, Bangalore, India' 
-            WHERE location LIKE '%San Francisco%'
-        `);
-        await pool.query(`
-            UPDATE bookings 
-            SET totalPaid = totalPaid * 85 
-            WHERE totalPaid < 10000
-        `);
-
-        console.log('Database synced with 3 Indian locations and INR currency.');
-    } catch (err) {
-        console.warn('Auto-seed warning:', err.message);
-    }
-}
 app.get("/health", (req, res) => {
     res.json("speedo is running")
 })
@@ -278,5 +187,4 @@ app.get("/health", (req, res) => {
 const PORT = 5000;
 app.listen(PORT, async () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
-    await ensureDatabaseSeeded();
 });

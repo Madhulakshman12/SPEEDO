@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import {
   Car,
@@ -25,51 +26,13 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  Moon,
+  Sun,
+  Menu
 } from 'lucide-react';
 
 /* ─────────── CONSTANTS & HELPERS ─────────── */
-const INDIAN_LOCATIONS = [
-  'Banjara Hills, Hyderabad, India',
-  'Jubilee Hills, Hyderabad, India',
-  'Whitefield, Bangalore, India'
-];
-
-const CATEGORY_DEFINITIONS = [
-  {
-    id: 'Supercars & Track',
-    title: 'Supercars & Track',
-    subtitle: 'Track-Honed Acceleration',
-    description: 'Sub-3.0s sprint machines with race-derived downforce and screaming exhausts.',
-    startingPrice: 65000,
-    icon: Zap
-  },
-  {
-    id: 'Luxury SUV',
-    title: 'Luxury SUV',
-    subtitle: 'Commanding Stance & Twin-Turbo V8',
-    description: 'Towering road presence, handcrafted leather cabins, and all-weather capability.',
-    startingPrice: 58000,
-    icon: ShieldCheck
-  },
-  {
-    id: 'Electric Performance',
-    title: 'Electric Performance',
-    subtitle: 'Instant Torque Architecture',
-    description: 'Next-gen dual-motor electric engineering delivering explosive instantaneous launch.',
-    startingPrice: 42000,
-    icon: Sparkles
-  },
-  {
-    id: 'Executive Luxury',
-    title: 'Executive Luxury',
-    subtitle: 'Unrivaled Starlight Serenity',
-    description: 'The pinnacle of chauffeured or self-drive prestige, effortless poise, and comfort.',
-    startingPrice: 95000,
-    icon: Car
-  }
-];
-
 export const formatINR = (val) => {
   const num = Math.round(Number(val) || 0);
   return '₹' + num.toLocaleString('en-IN');
@@ -86,7 +49,7 @@ const normalizePath = (path) => {
 };
 
 /* ─────────── USER AUTH MODAL (FOR NORMAL CUSTOMERS ONLY) ─────────── */
-function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToAdmin }) {
+function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister }) {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -100,12 +63,6 @@ function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToA
     e.preventDefault();
     setError('');
 
-    // If an admin enters admin credentials in the customer modal, guide them to /admin
-    if (email === 'admin@speedo.com' || email === 'admin') {
-      setError('Admin account detected. Please use the /admin portal to sign in.');
-      return;
-    }
-
     setLoading(true);
     const res = isRegister
       ? await onRegister(name, email, password, 'client')
@@ -117,12 +74,6 @@ function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToA
     } else {
       setError(res?.message || 'Authentication failed');
     }
-  };
-
-  const handleDemoCustomer = () => {
-    setEmail('user@speedo.com');
-    setPassword('user123');
-    setName('Arjun Reddy');
   };
 
   return (
@@ -161,7 +112,7 @@ function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToA
                 onChange={e => setName(e.target.value)}
                 required
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#4ba0ff]"
-                placeholder="Arjun Reddy"
+                placeholder="Full name"
               />
             </div>
           )}
@@ -174,7 +125,7 @@ function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToA
               onChange={e => setEmail(e.target.value)}
               required
               className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#4ba0ff]"
-              placeholder="user@speedo.com"
+              placeholder="you@example.com"
             />
           </div>
 
@@ -207,13 +158,6 @@ function CustomerAuthModal({ isOpen, onClose, onLogin, onRegister, onNavigateToA
           >
             {isRegister ? 'Already registered? Sign In' : 'New user? Sign Up'}
           </button>
-          <button
-            type="button"
-            onClick={handleDemoCustomer}
-            className="text-[#8ec5ff] hover:underline"
-          >
-            Fill Demo
-          </button>
         </div>
       </div>
     </div>
@@ -230,8 +174,8 @@ function AdminUnauthorizedNotice({ onNavigateToAdmin, onLogout }) {
         </div>
         <h2 className="font-condensed text-3xl text-white tracking-wide">You are not authorized</h2>
         <p className="text-xs text-white/50 leading-relaxed">
-          You are currently logged in as <span className="text-amber-400 font-mono">Speedo Administrator</span>.
-          Admin accounts are restricted to the Admin Portal and cannot browse or place customer rental bookings.
+          You are currently logged in with an administrator account.
+          Administrator accounts are restricted to the Admin Portal and cannot place customer rental bookings.
         </p>
         <div className="pt-2 flex flex-col gap-2.5">
           <button
@@ -293,9 +237,17 @@ function AdminRouteView({ onNavigateToStore }) {
     updateVehicle,
     deleteVehicle,
     uploadVehicleImage,
+    fetchInitialData,
     login,
     logout
   } = useStore();
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  const fleetLocations = [...new Set(vehicles.map(vehicle => vehicle.location).filter(Boolean))];
+  const fleetCategories = [...new Set(vehicles.map(vehicle => vehicle.category).filter(Boolean))];
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -312,25 +264,13 @@ function AdminRouteView({ onNavigateToStore }) {
 
   // Add / Edit form state
   const emptyForm = {
-    name: '', category: 'Supercars & Track', dailyRate: 65000,
-    horsepower: '600 HP', zeroToSixty: '3.1s', topSpeed: '310 km/h',
-    transmission: '8-Speed Automatic', location: INDIAN_LOCATIONS[0],
+    name: '', category: '', dailyRate: '',
+    horsepower: '', zeroToSixty: '', topSpeed: '',
+    transmission: '', location: '',
     image: '', imageSource: 'url' // 'url' or 'existing'
   };
   const [formData, setFormData] = useState({ ...emptyForm });
   const [imagePreviewError, setImagePreviewError] = useState(false);
-
-  // Existing image gallery for quick selection
-  const STOCK_IMAGES = [
-    { label: 'Porsche 911', url: 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'Mercedes G-Class', url: 'https://images.unsplash.com/photo-1520050206274-a1ae44613e6d?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'Audi e-tron', url: 'https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'Lamborghini Urus', url: 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'Ferrari 296', url: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'Rolls-Royce', url: 'https://images.unsplash.com/photo-1631295868223-63265b40d9e4?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'BMW M4', url: 'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?auto=format&fit=crop&w=1200&q=80' },
-    { label: 'McLaren', url: 'https://images.unsplash.com/photo-1621135802920-133df287f89c?auto=format&fit=crop&w=1200&q=80' },
-  ];
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -353,12 +293,12 @@ function AdminRouteView({ onNavigateToStore }) {
     setFormData({
       name: car.name || '',
       category: car.category || 'Supercars & Track',
-      dailyRate: car.dailyRate || 65000,
+      dailyRate: car.dailyRate || '',
       horsepower: car.horsepower || '',
       zeroToSixty: car.zeroToSixty || '',
       topSpeed: car.topSpeed || '',
       transmission: car.transmission || '8-Speed Automatic',
-      location: car.location || INDIAN_LOCATIONS[0],
+      location: car.location || '',
       image: car.image || '',
       imageSource: 'url'
     });
@@ -374,13 +314,13 @@ function AdminRouteView({ onNavigateToStore }) {
     const carPayload = {
       name: formData.name,
       category: formData.category,
-      dailyRate: Number(formData.dailyRate) || 50000,
+      dailyRate: Number(formData.dailyRate),
       horsepower: formData.horsepower,
       zeroToSixty: formData.zeroToSixty,
       topSpeed: formData.topSpeed,
       transmission: formData.transmission,
       location: formData.location,
-      image: formData.image || 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=1200&q=80'
+      image: formData.image || ''
     };
 
     if (editingCarId) {
@@ -458,7 +398,7 @@ function AdminRouteView({ onNavigateToStore }) {
                 onChange={e => setEmail(e.target.value)}
                 required
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500 transition"
-                placeholder="admin@speedo.com"
+                placeholder="name@company.com"
               />
             </div>
 
@@ -486,13 +426,6 @@ function AdminRouteView({ onNavigateToStore }) {
           </form>
 
           <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-            <button
-              type="button"
-              onClick={() => { setEmail('admin@speedo.com'); setPassword('admin123'); }}
-              className="text-amber-400 hover:text-amber-300 font-mono"
-            >
-              Use demo credentials
-            </button>
             <button
               type="button"
               onClick={onNavigateToStore}
@@ -558,7 +491,7 @@ function AdminRouteView({ onNavigateToStore }) {
           <div>
             <h1 className="font-condensed text-3xl sm:text-4xl text-white tracking-wide">Fleet Operations</h1>
             <p className="text-xs text-white/40 mt-1 font-mono">
-              Banjara Hills, Jubilee Hills, and Whitefield Hubs · Currency: INR (₹)
+              Manage fleet vehicles and reservations
             </p>
           </div>
           <button
@@ -585,7 +518,7 @@ function AdminRouteView({ onNavigateToStore }) {
           </div>
           <div className="bg-[#0d131b] border border-white/5 rounded-2xl p-4">
             <p className="text-white/40 text-xs font-mono uppercase">Hubs</p>
-            <p className="font-condensed text-3xl text-white font-bold mt-1">3 Indian Hubs</p>
+            <p className="font-condensed text-3xl text-white font-bold mt-1">{fleetLocations.length} Locations</p>
           </div>
         </div>
 
@@ -643,7 +576,7 @@ function AdminRouteView({ onNavigateToStore }) {
                       src={car.image}
                       alt={car.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      onError={e => { e.target.src = 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=1200&q=80'; }}
+                      onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
                     />
                     {/* Overlay Badges */}
                     <div className="absolute top-2 left-2 flex gap-1.5">
@@ -818,7 +751,7 @@ function AdminRouteView({ onNavigateToStore }) {
                 <label className="block text-[11px] text-white/40 uppercase font-mono mb-1">Make & Model</label>
                 <input
                   type="text"
-                  placeholder="e.g., Ferrari Roma Spider"
+                  placeholder="Enter vehicle name"
                   value={formData.name}
                   onChange={e => updateForm('name', e.target.value)}
                   required
@@ -830,15 +763,16 @@ function AdminRouteView({ onNavigateToStore }) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] text-white/40 uppercase font-mono mb-1">Category</label>
-                  <select
+                  <input
+                    list="fleet-categories"
                     value={formData.category}
                     onChange={e => updateForm('category', e.target.value)}
                     className="w-full bg-[#0d131b] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 transition"
-                  >
-                    {CATEGORY_DEFINITIONS.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.title}</option>
-                    ))}
-                  </select>
+                    placeholder="Enter a category"
+                  />
+                  <datalist id="fleet-categories">
+                    {fleetCategories.map(category => <option key={category} value={category} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-[11px] text-white/40 uppercase font-mono mb-1">Daily Rate (₹)</label>
@@ -897,15 +831,16 @@ function AdminRouteView({ onNavigateToStore }) {
               {/* Location */}
               <div>
                 <label className="block text-[11px] text-white/40 uppercase font-mono mb-1">Location Hub</label>
-                <select
+                <input
+                  list="fleet-locations"
                   value={formData.location}
                   onChange={e => updateForm('location', e.target.value)}
                   className="w-full bg-[#0d131b] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 transition"
-                >
-                  {INDIAN_LOCATIONS.map(loc => (
-                    <option key={loc} value={loc}>{loc}</option>
-                  ))}
-                </select>
+                  placeholder="Enter a location"
+                />
+                <datalist id="fleet-locations">
+                  {fleetLocations.map(location => <option key={location} value={location} />)}
+                </datalist>
               </div>
 
               {/* ─── IMAGE SECTION ─── */}
@@ -915,70 +850,13 @@ function AdminRouteView({ onNavigateToStore }) {
                   <span className="text-xs font-bold text-white">Vehicle Image</span>
                 </div>
 
-                {/* Image Source Toggle */}
-                <div className="flex gap-1 bg-black/30 rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => updateForm('imageSource', 'url')}
-                    className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition ${formData.imageSource === 'url'
-                      ? 'bg-amber-600 text-white'
-                      : 'text-white/40 hover:text-white'
-                      }`}
-                  >
-                    <Link className="w-3 h-3 inline mr-1" />Paste URL
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateForm('imageSource', 'existing')}
-                    className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition ${formData.imageSource === 'existing'
-                      ? 'bg-amber-600 text-white'
-                      : 'text-white/40 hover:text-white'
-                      }`}
-                  >
-                    <Layers className="w-3 h-3 inline mr-1" />Stock Gallery
-                  </button>
-                </div>
-
-                {/* URL Input */}
-                {formData.imageSource === 'url' && (
-                  <div>
-                    <input
-                      type="url"
-                      placeholder="https://images.unsplash.com/photo-... or any image URL"
-                      value={formData.image}
-                      onChange={e => updateForm('image', e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-amber-500 transition font-mono"
-                    />
-                    <p className="text-[10px] text-white/25 mt-1 font-mono">Paste any direct image URL (Unsplash, Imgur, Google Drive, etc.)</p>
-                  </div>
-                )}
-
-                {/* Stock Gallery */}
-                {formData.imageSource === 'existing' && (
-                  <div className="grid grid-cols-4 gap-2">
-                    {STOCK_IMAGES.map((img, idx) => (
-                      <button
-                        type="button"
-                        key={idx}
-                        onClick={() => { updateForm('image', img.url); updateForm('imageSource', 'url'); }}
-                        className={`relative aspect-[4/3] rounded-lg overflow-hidden border-2 transition-all ${formData.image === img.url
-                          ? 'border-amber-500 ring-2 ring-amber-500/30'
-                          : 'border-white/5 hover:border-white/20'
-                          }`}
-                      >
-                        <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-1">
-                          <span className="text-[8px] text-white/80 font-mono leading-tight">{img.label}</span>
-                        </div>
-                        {formData.image === img.url && (
-                          <div className="absolute top-1 right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
-                            <ShieldCheck className="w-2.5 h-2.5 text-white" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <input
+                  type="url"
+                  placeholder="Enter a direct vehicle image URL"
+                  value={formData.image}
+                  onChange={e => updateForm('image', e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-amber-500 transition font-mono"
+                />
 
                 {/* Image Preview */}
                 {formData.image && (
@@ -1057,17 +935,27 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
     fetchInitialData();
   }, [fetchInitialData]);
 
+  const fleetLocations = [...new Set(vehicles.map(vehicle => vehicle.location).filter(Boolean))];
+  const fleetCategories = [...new Set(vehicles.map(vehicle => vehicle.category).filter(Boolean))];
+
   const [selectedLocation, setSelectedLocation] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCarForBooking, setSelectedCarForBooking] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showMobileNav, setShowMobileNav] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('speedo-theme') || 'light');
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('speedo-theme', nextTheme);
+    setTheme(nextTheme);
+  };
 
   // Booking details
   const [agreementAgreed, setAgreementAgreed] = useState(true);
-  const [bookingLocation, setBookingLocation] = useState(INDIAN_LOCATIONS[0]);
-  const [startDate, setStartDate] = useState('2026-10-12');
-  const [endDate, setEndDate] = useState('2026-10-15');
+  const [bookingLocation, setBookingLocation] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const filteredVehicles = vehicles.filter(car => {
     const matchesLoc = selectedLocation === 'All' || car.location === selectedLocation;
@@ -1136,22 +1024,22 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#05070b] text-white selection:bg-[#3b82f6] selection:text-white flex flex-col font-sans">
+    <div className={`customer-storefront ${theme === 'dark' ? 'theme-dark' : 'theme-light'} min-h-screen bg-[#05070b] text-white selection:bg-[#3b82f6] selection:text-white flex flex-col font-sans`}>
       {/* ─────────── NAVBAR ─────────── */}
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-[#05070b]/95 backdrop-blur-md">
-        <div className="max-w-[1360px] mx-auto px-6 h-18 flex items-center justify-between">
+      <header className="storefront-header sticky top-0 z-40 px-4 pt-3">
+        <div className="storefront-nav relative mx-auto min-h-16 flex items-center justify-between gap-5">
           {/* Logo */}
           <button onClick={() => onNavigate('/')} className="flex items-center gap-3 group text-left">
             <div className="w-9 h-9 rounded-lg bg-[#2d6cdf] shadow-[0_8px_24px_rgba(45,108,223,0.4)] flex items-center justify-center transition-transform group-hover:scale-105">
               <Car className="w-5 h-5 text-white" />
             </div>
-            <span className="font-condensed text-[1.85rem] tracking-[0.16em] text-white group-hover:text-[#93c5fd] transition font-bold">
+            <span className="font-condensed text-2xl sm:text-[1.85rem] tracking-[0.12em] sm:tracking-[0.16em] text-white group-hover:text-[#93c5fd] transition font-bold">
               SPEEDO
             </span>
           </button>
 
           {/* Each Nav Link with its own Route */}
-          <nav className="hidden md:flex items-center gap-2">
+          <nav className="hidden xl:flex items-center gap-0">
             {[
               ['/', 'Home'],
               ['/shop', 'Shop'],
@@ -1163,7 +1051,7 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                 <button
                   key={path}
                   onClick={() => onNavigate(path)}
-                  className={`relative px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'text-white' : 'text-white/50 hover:text-white/90'
+                  className={`relative px-2.5 lg:px-4 py-2 rounded-full text-sm font-medium transition ${isActive ? 'text-white' : 'text-white/50 hover:text-white/90'
                     }`}
                 >
                   {label}
@@ -1176,11 +1064,39 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
           </nav>
 
           {/* Right Action Items */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMobileNav(!showMobileNav)}
+              aria-label={showMobileNav ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={showMobileNav}
+              className="mobile-nav-toggle inline-flex h-10 w-10 items-center justify-center rounded-full border xl:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => onNavigate('/admin')}
+              aria-label="Admin sign in"
+              title="Admin sign in"
+              className="admin-signin-button inline-flex h-10 items-center justify-center gap-2 rounded-full border px-3 text-xs font-semibold transition"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Admin sign in</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+              className="theme-toggle inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 lg:px-3 text-xs font-semibold text-white/70 transition hover:bg-white/10"
+            >
+              {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              <span className="hidden sm:inline">{theme === 'light' ? 'Dark' : 'Light'}</span>
+            </button>
             <button
               onClick={() => onNavigate('/rentals')}
               title="Reservations"
-              className="relative w-10 h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition"
+              className="relative hidden sm:flex w-10 h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white items-center justify-center transition"
             >
               <ShoppingBag className="w-4 h-4" />
             </button>
@@ -1224,13 +1140,35 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
             ) : (
               <button
                 onClick={() => setShowAuthModal(true)}
-                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white transition flex items-center gap-1.5"
+                aria-label="Sign in"
+                title="Sign in"
+                className="px-3 lg:px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white transition flex items-center gap-1.5"
               >
                 <UserRound className="w-3.5 h-3.5 text-[#8ec5ff]" />
-                <span>Sign In</span>
+                <span className="hidden sm:inline">Sign In</span>
               </button>
             )}
           </div>
+          {showMobileNav && (
+            <nav className="mobile-nav-menu absolute left-0 right-0 top-[calc(100%+10px)] z-50 rounded-2xl border p-2 shadow-xl xl:hidden">
+              {[
+                ['/', 'Home'],
+                ['/shop', 'Shop'],
+                ['/categories', 'Categories'],
+                ['/blogs', 'Blogs']
+              ].map(([path, label]) => (
+                <button
+                  key={path}
+                  onClick={() => { onNavigate(path); setShowMobileNav(false); }}
+                  className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                    currentPath === path ? 'text-blue-600' : 'text-white/70 hover:bg-white/5'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
       </header>
 
@@ -1239,26 +1177,26 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
         {/* PAGE 1: HOME (/) */}
         {currentPath === '/' && (
           <div>
-            <section className="relative overflow-hidden min-h-[580px] lg:min-h-[660px] flex items-center">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_35%,rgba(45,108,223,0.18),transparent_40%),radial-gradient(circle_at_20%_90%,rgba(14,165,233,0.12),transparent_35%)] pointer-events-none" />
+            <section className="storefront-hero relative overflow-hidden min-h-[580px] lg:min-h-[660px] flex items-center">
+              <img src="/28532.jpg" alt="" aria-hidden="true" className="hero-car-art" />
+              <div className="hero-art-shade" />
 
-              <div className="max-w-[1360px] mx-auto px-6 py-8 lg:py-12 w-full">
-                <div className="grid lg:grid-cols-[1fr_1.25fr] items-center gap-8 lg:gap-4">
+              <div className="relative z-10 max-w-[1360px] mx-auto px-6 py-8 lg:py-12 w-full">
+                <div className="grid lg:grid-cols-2 items-center gap-8 lg:gap-4">
                   {/* Left Hero Text */}
                   <div className="z-10 max-w-[620px]">
                     <div className="inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.22em] text-[#93c5fd] mb-6">
                       <span className="w-2 h-2 rounded-full bg-[#4ba0ff] inline-block shadow-[0_0_8px_#4ba0ff]" />
-                      Top Product Of The Month
+                      Premium car rentals
                     </div>
 
                     <h1 className="font-condensed text-[4rem] sm:text-[5.4rem] lg:text-[6.6rem] leading-[0.88] tracking-[-0.04em] text-white">
-                      Experience the<br />
-                      road like never<br />
-                      before
+                      Find your<br />
+                      next drive.
                     </h1>
 
                     <p className="max-w-xl text-base sm:text-lg text-white/55 leading-relaxed mt-6">
-                      Curated fleet of exotic supercars, luxury SUVs and track machines available across Hyderabad & Bangalore.
+                      Discover a better way to get around. Choose your vehicle, pick your dates, and book in just a few steps.
                     </p>
 
                     <div className="flex flex-wrap items-center gap-4 mt-8">
@@ -1276,31 +1214,12 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                       </button>
                     </div>
 
-                    {/* Locations */}
-                    <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-2 text-[11px] text-white/40 font-mono">
-                      <span className="inline-flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-md text-white/70">
-                        <MapPin className="w-3 h-3 text-[#4ba0ff]" /> Banjara Hills
-                      </span>
-                      <span className="inline-flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-md text-white/70">
-                        <MapPin className="w-3 h-3 text-[#4ba0ff]" /> Jubilee Hills
-                      </span>
-                      <span className="inline-flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-md text-white/70">
-                        <MapPin className="w-3 h-3 text-[#4ba0ff]" /> Whitefield, Bangalore
-                      </span>
-                    </div>
+                    <p className="mt-8 text-sm text-white/70">
+                      {vehicles.length} {vehicles.length === 1 ? 'vehicle' : 'vehicles'} currently in the fleet
+                    </p>
                   </div>
 
-                  {/* Right Hero Image (Clean object-contain, no stretch) */}
-                  <div className="relative flex items-center justify-center lg:justify-end w-full overflow-visible">
-                    <div className="relative w-full max-w-[850px] lg:max-w-[920px] flex justify-end">
-                      <div className="absolute left-0 top-0 bottom-0 w-28 bg-gradient-to-r from-[#05070b] to-transparent pointer-events-none hidden lg:block z-10" />
-                      <img
-                        src="./x.png"
-                        alt="Ford Mustang Performance Supercar"
-                        className="w-full h-auto max-h-[580px] lg:max-h-[640px] object-contain object-right drop-shadow-[0_25px_50px_rgba(0,0,0,0.85)] select-none pointer-events-none"
-                      />
-                    </div>
-                  </div>
+                  <div aria-hidden="true" className="hidden lg:block min-h-[360px]" />
                 </div>
               </div>
             </section>
@@ -1309,7 +1228,7 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
             <section className="max-w-[1360px] mx-auto px-6 pb-20 pt-8">
               <div className="mb-8 flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] text-[#8ec5ff] font-mono tracking-[0.2em] uppercase">Indian Exotic Fleet</p>
+                  <p className="text-[11px] text-[#8ec5ff] font-mono tracking-[0.2em] uppercase">Current fleet</p>
                   <h2 className="font-condensed text-3xl tracking-wide text-white mt-1">Featured Vehicles</h2>
                 </div>
                 <button
@@ -1362,6 +1281,11 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                     </div>
                   </div>
                 ))}
+                {vehicles.length === 0 && (
+                  <div className="md:col-span-3 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+                    No vehicles are listed yet. Please check back later.
+                  </div>
+                )}
               </div>
             </section>
           </div>
@@ -1384,8 +1308,8 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                   className="bg-[#0d131b] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#4ba0ff]"
                 >
                   <option value="All">All Locations</option>
-                  {INDIAN_LOCATIONS.map(loc => (
-                    <option key={loc} value={loc}>{loc}</option>
+                  {fleetLocations.map(location => (
+                    <option key={location} value={location}>{location}</option>
                   ))}
                 </select>
 
@@ -1395,8 +1319,8 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                   className="bg-[#0d131b] border border-white/15 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#4ba0ff]"
                 >
                   <option value="All">All Categories</option>
-                  {CATEGORY_DEFINITIONS.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.title}</option>
+                  {fleetCategories.map(category => (
+                    <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
               </div>
@@ -1441,7 +1365,7 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                         </div>
                         <div>
                           <p className="text-[9px] uppercase text-white/30 font-mono">Top Speed</p>
-                          <p className="mt-1 text-xs font-bold text-white">{car.topSpeed || '290 km/h'}</p>
+                          <p className="mt-1 text-xs font-bold text-white">{car.topSpeed || '—'}</p>
                         </div>
                       </div>
 
@@ -1471,6 +1395,11 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                   </div>
                 );
               })}
+              {filteredVehicles.length === 0 && (
+                <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+                  No vehicles match these filters.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1492,14 +1421,13 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
 
             {/* Category Cards Showcase */}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {CATEGORY_DEFINITIONS.map(cat => {
-                const IconComponent = cat.icon;
-                const isSelected = selectedCategory === cat.id;
+              {fleetCategories.map(category => {
+                const isSelected = selectedCategory === category;
 
                 return (
                   <div
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(isSelected ? 'All' : cat.id)}
+                    key={category}
+                    onClick={() => setSelectedCategory(isSelected ? 'All' : category)}
                     className={`rounded-2xl p-6 border transition-all duration-300 cursor-pointer flex flex-col justify-between ${isSelected
                       ? 'bg-[#121a26] border-[#4ba0ff] shadow-[0_15px_35px_rgba(59,130,246,0.25)]'
                       : 'bg-[#0d131b] border-white/5 hover:border-white/20'
@@ -1507,22 +1435,22 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                   >
                     <div>
                       <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5 text-[#4ba0ff]">
-                        <IconComponent className="w-6 h-6" />
+                        <Car className="w-6 h-6" />
                       </div>
-                      <h3 className="font-condensed text-2xl text-white font-bold">{cat.title}</h3>
-                      <p className="text-[11px] text-[#8ec5ff] font-mono mt-0.5">{cat.subtitle}</p>
+                      <h3 className="font-condensed text-2xl text-white font-bold">{category}</h3>
                       <p className="text-xs text-white/50 leading-relaxed mt-3">
-                        {cat.description}
+                        {vehicles.filter(vehicle => vehicle.category === category).length} vehicles in this category
                       </p>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono">
-                      <span className="text-white/40">Starting from</span>
-                      <span className="text-white font-bold">{formatINR(cat.startingPrice)}/day</span>
-                    </div>
                   </div>
                 );
               })}
+              {fleetCategories.length === 0 && (
+                <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+                  Vehicle categories will appear here when the fleet is added.
+                </div>
+              )}
             </div>
 
             {/* Filtered Vehicles for selected category */}
@@ -1591,49 +1519,12 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
         {/* PAGE 4: BLOGS (/blogs) */}
         {currentPath === '/blogs' && (
           <div className="max-w-[1360px] mx-auto px-6 py-10 space-y-8">
-            <div className="border-b border-white/5 pb-6">
-              <p className="text-[11px] text-[#8ec5ff] font-mono tracking-[0.24em] uppercase">Speedo Journal</p>
-              <h2 className="font-condensed text-3xl sm:text-4xl text-white tracking-wide mt-1">Stories From The Road</h2>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              {[
-                {
-                  title: 'Hyderabad Outer Ring Road in a 911 GT3 RS',
-                  date: 'OCTOBER 2026',
-                  author: 'Arjun Reddy',
-                  excerpt: 'Experiencing 518 naturally aspirated horsepower across Hyderabad’s premier expressways.',
-                  image: 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=800&q=80'
-                },
-                {
-                  title: 'Bangalore to Coorg Coffee Trails in the AMG G 63',
-                  date: 'SEPTEMBER 2026',
-                  author: 'Rohit Varma',
-                  excerpt: 'Tackling the twisty Western Ghats with twin-turbo V8 poise and bespoke luxury.',
-                  image: 'https://images.unsplash.com/photo-1520050206274-a1ae44613e6d?auto=format&fit=crop&w=800&q=80'
-                },
-                {
-                  title: 'Whitefield to Airport in the RS e-tron GT',
-                  date: 'AUGUST 2026',
-                  author: 'Sameer Rao',
-                  excerpt: 'Instant 637-horsepower electric launch and silent cruising in Bangalore’s high-tech hub.',
-                  image: 'https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?auto=format&fit=crop&w=800&q=80'
-                }
-              ].map((blog, idx) => (
-                <div key={idx} className="bg-[#0d131b] border border-white/5 rounded-2xl overflow-hidden hover:border-[#2d6cdf]/40 transition group">
-                  <div className="aspect-[16/10] overflow-hidden">
-                    <img src={blog.image} alt={blog.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                  </div>
-                  <div className="p-6 space-y-3">
-                    <div className="flex items-center justify-between text-[11px] font-mono text-[#8ec5ff]">
-                      <span>{blog.date}</span>
-                      <span className="text-white/40">{blog.author}</span>
-                    </div>
-                    <h3 className="font-bold text-white text-lg group-hover:text-[#93c5fd] transition">{blog.title}</h3>
-                    <p className="text-xs text-white/50 leading-relaxed">{blog.excerpt}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Speedo Journal</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Stories from the road</h2>
+              <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-600">
+                The journal is being prepared. Check back soon for travel guides and fleet updates.
+              </p>
             </div>
           </div>
         )}
@@ -1667,12 +1558,12 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
               </div>
             ) : (
               bookings.map(b => {
-                const carImage = vehicles.find(v => v.id === b.carId)?.image || 'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=800&q=80';
+                const carImage = vehicles.find(v => v.id === b.carId)?.image;
                 return (
                   <div key={b.id} className="bg-[#0d131b] border border-white/5 rounded-2xl overflow-hidden">
                     <div className="flex flex-col sm:flex-row">
                       <div className="sm:w-60 h-44 sm:h-auto shrink-0">
-                        <img src={carImage} alt={b.carName} className="w-full h-full object-cover" />
+                        {carImage && <img src={carImage} alt={b.carName} className="w-full h-full object-cover" />}
                       </div>
                       <div className="flex-1 p-5 space-y-4">
                         <div className="flex items-start justify-between gap-4">
@@ -1722,8 +1613,7 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
       <footer className="border-t border-white/5 py-8 mt-12 bg-[#05070b]">
         <div className="max-w-[1360px] mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-white/40 font-mono">
           <div>
-            <span className="font-bold text-white/70">SPEEDO FLEET INDIA</span>
-            <span className="ml-2">· Banjara Hills · Jubilee Hills · Whitefield</span>
+            <span className="font-bold text-white/70">SPEEDO CAR RENTALS</span>
           </div>
           <div className="flex items-center gap-6">
             <button
@@ -1763,8 +1653,8 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
                   onChange={e => setBookingLocation(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#4ba0ff]"
                 >
-                  {INDIAN_LOCATIONS.map(loc => (
-                    <option key={loc} value={loc} className="bg-[#0d131b]">{loc}</option>
+                  {fleetLocations.map(location => (
+                    <option key={location} value={location} className="bg-[#0d131b]">{location}</option>
                   ))}
                 </select>
               </div>
@@ -1830,40 +1720,45 @@ function CustomerStoreView({ currentPath, onNavigate, onNavigateToAdmin }) {
         onClose={() => setShowAuthModal(false)}
         onLogin={login}
         onRegister={register}
-        onNavigateToAdmin={onNavigateToAdmin}
       />
     </div>
   );
 }
 
-/* ─────────── ROOT APP WITH CLEAN ROUTING FOR EACH NAV LINK ─────────── */
-export default function App() {
-  const [currentPath, setCurrentPath] = useState(() => normalizePath(window.location.pathname));
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(normalizePath(window.location.pathname));
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+function AppRoutes() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentPath = normalizePath(location.pathname);
 
   const navigateTo = (path) => {
-    const normalized = normalizePath(path);
-    window.history.pushState({}, '', normalized);
-    setCurrentPath(normalized);
+    navigate(path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (currentPath === '/admin') {
-    return <AdminRouteView onNavigateToStore={() => navigateTo('/')} />;
-  }
-
   return (
-    <CustomerStoreView
-      currentPath={currentPath}
-      onNavigate={navigateTo}
-      onNavigateToAdmin={() => navigateTo('/admin')}
-    />
+    <Routes>
+      <Route
+        path="/admin/*"
+        element={<AdminRouteView onNavigateToStore={() => navigateTo('/')} />}
+      />
+      <Route
+        path="*"
+        element={
+          <CustomerStoreView
+            currentPath={currentPath}
+            onNavigate={navigateTo}
+            onNavigateToAdmin={() => navigateTo('/admin')}
+          />
+        }
+      />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }
